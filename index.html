@@ -1,0 +1,1918 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title> גנרטורים | קו צהוב</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f8fafc;
+        }
+        .overdue { background-color: #fee2e2; }
+        .warning { background-color: #fef9c3; }
+        .safe { background-color: #f0fdf4; }
+        
+        /* Modal styles */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 50;
+            align-items: center;
+            justify-content: center;
+        }
+        .modal.active { display: flex; }
+        #entry-modal {
+            z-index: 1000;
+            background: rgba(15, 23, 42, 0.9);
+            backdrop-filter: blur(4px);
+        }
+        #maintenance-modal {
+            z-index: 60;
+        }
+        #hours-report-modal {
+            z-index: 70;
+        }
+        #images-modal {
+            z-index: 80;
+        }
+        .image-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+            gap: 12px;
+        }
+        .image-card {
+            position: relative;
+            aspect-ratio: 1;
+            border-radius: 8px;
+            overflow: hidden;
+            border: 1px solid #e2e8f0;
+        }
+        .image-card img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        .delete-img-btn {
+            position: absolute;
+            top: 4px;
+            left: 4px;
+            background: rgba(239, 68, 68, 0.9);
+            color: white;
+            padding: 4px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        /* Toast styles */
+        #toast {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: #1e293b;
+            color: white;
+            padding: 12px 24px;
+            border-radius: 8px;
+            display: none;
+            z-index: 100;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+        }
+        #toast.active { display: flex; align-items: center; gap: 12px; }
+        /* View-only mode styles */
+        .edit-only { display: none !important; }
+        body.edit-mode .edit-only { display: inline-flex !important; }
+        body.edit-mode button.edit-only { display: flex !important; }
+        .view-only { display: inline-flex !important; }
+        body.edit-mode .view-only { display: none !important; }
+        body.edit-mode button.view-only { display: none !important; }
+    </style>
+</head>
+<body class="p-4 md:p-8">
+    <!-- Entry Modal -->
+    <div id="entry-modal" class="modal active">
+        <div class="bg-white rounded-2xl p-8 w-full max-w-md shadow-2xl text-center">
+            <h2 class="text-3xl font-bold mb-2 text-slate-900">ברוכים הבאים</h2>
+            <p class="text-slate-500 mb-8">מערכת ניהול אחזקת גנרטורים מבית פלק"ד 98</p>
+            
+            <div class="space-y-4">
+                <button onclick="setMode('view')" class="w-full py-4 bg-slate-100 text-slate-700 rounded-xl font-bold hover:bg-slate-200 transition-all flex items-center justify-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+                    כניסה לצפייה בלבד
+                </button>
+                
+                <div class="relative py-4">
+                    <div class="absolute inset-0 flex items-center"><span class="w-full border-t"></span></div>
+                    <div class="relative flex justify-center text-xs uppercase"><span class="bg-white px-2 text-slate-500">או</span></div>
+                </div>
+                <div id="password-section" class="space-y-4">
+                    <input type="password" id="entry-password" placeholder="הזן סיסמת עריכה" class="w-full p-4 border rounded-xl text-center text-xl tracking-widest outline-none focus:ring-2 focus:ring-emerald-500">
+                    <button onclick="setMode('edit')" class="w-full py-4 bg-emerald-600 text-white rounded-xl font-bold hover:bg-emerald-700 transition-all flex items-center justify-center gap-2 shadow-lg">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/></svg>
+                        כניסה למצב עריכה
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div id="app" class="max-w-7xl mx-auto pb-24">
+        <!-- Header -->
+        <header class="flex flex-col md:flex-row justify-between items-center mb-4 gap-4">
+            <div>
+                <h1 class="text-2xl font-bold text-slate-900"> גנרטורים | קו צהוב </h1>
+            </div>
+        </header>
+        <!-- Filters -->
+        <div class="bg-white p-4 rounded-xl shadow-sm mb-6 flex flex-row gap-4">
+            <div class="flex-1">
+                <select id="filter-location" onchange="renderTable()" class="w-full p-2 border rounded-lg focus:ring-2 focus:ring-slate-500 outline-none text-sm">
+                    <option value="">כל המיקומים</option>
+                </select>
+            </div>
+            <div class="flex-1">
+                <select id="filter-company" onchange="renderTable()" class="w-full p-2 border rounded-lg focus:ring-2 focus:ring-slate-500 outline-none text-sm">
+                    <option value="">כל החברות</option>
+                </select>
+            </div>
+        </div>
+        <!-- Table Container -->
+        <div class="bg-white rounded-xl shadow-sm overflow-hidden border">
+            <div class="overflow-x-auto">
+                <table class="w-full text-right border-collapse">
+                    <thead>
+                        <tr class="bg-slate-50 border-bottom text-slate-600 font-semibold text-sm">
+                            <th class="p-4 whitespace-nowrap">גנרטור</th>
+                            <th class="p-4 whitespace-nowrap hidden sm:table-cell">מק"ט</th>
+                            <th class="p-4 whitespace-nowrap hidden md:table-cell">מס' צה"לי</th>
+                            <th class="p-4 whitespace-nowrap">טיפול הבא</th>
+                            <th class="p-4 whitespace-nowrap">טיפול אחרון</th>
+                            <th class="p-4 whitespace-nowrap">קיט</th>
+                            <th class="p-4 whitespace-nowrap hidden xl:table-cell">חברה</th>
+                            <th class="p-4 whitespace-nowrap hidden lg:table-cell">הערות</th>
+                        </tr>
+                    </thead>
+                    <tbody id="generator-table-body">
+                        <!-- Rows will be injected here -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <!-- Bottom Actions -->
+        <div class="fixed bottom-0 left-0 right-0 bg-white border-t p-3 shadow-lg z-40 flex justify-center gap-3">
+            <button onclick="openExportModal()" class="bg-slate-100 text-slate-700 p-3 rounded-xl hover:bg-slate-200 transition-all flex items-center justify-center border border-slate-200 active:scale-95" title="ייצוא">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            </button>
+            <button onclick="openAddModal()" class="edit-only bg-emerald-600 text-white p-3 rounded-xl hover:bg-emerald-700 transition-all flex items-center justify-center shadow-lg active:scale-95" title="הוסף">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+            </button>
+            <button onclick="showEntryModal()" class="view-only bg-slate-900 text-white p-3 rounded-xl hover:bg-slate-800 transition-all flex items-center justify-center shadow-lg active:scale-95" title="עבור למצב עריכה">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg>
+            </button>
+            <button id="refresh-btn" onclick="fetchData()" class="bg-slate-900 text-white p-3 rounded-xl hover:bg-slate-800 transition-all flex items-center justify-center shadow-lg active:scale-95" title="רענן">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
+            </button>
+        </div>
+    </div>
+    <!-- Maintenance Modal -->
+    <div id="maintenance-modal" class="modal">
+        <div class="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl">
+            <h2 class="text-2xl font-bold mb-4">דיווח טיפול תקופתי</h2>
+            <form id="maintenance-form" onsubmit="handleMaintenanceSubmit(event)">
+                <input type="hidden" id="maint-id">
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 mb-1">תאריך הטיפול</label>
+                        <input type="date" id="maint-date" required class="w-full border rounded-lg p-2">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 mb-1">שעות מנוע בטיפול</label>
+                        <input type="number" id="maint-hours" required class="w-full border rounded-lg p-2">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 mb-1">שם מבצע</label>
+                        <input type="text" id="maint-performer" required class="w-full border rounded-lg p-2">
+                    </div>
+                </div>
+                <div class="flex justify-end gap-2 mt-6">
+                    <button type="button" onclick="closeModal('maintenance-modal')" class="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg">ביטול</button>
+                    <button type="submit" class="px-4 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800">שמור טיפול</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    <!-- Hours Report Modal -->
+    <div id="hours-report-modal" class="modal">
+        <div class="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl">
+            <h2 class="text-2xl font-bold mb-4">דיווח שעות מנוע</h2>
+            <form id="hours-report-form" onsubmit="handleHoursReportSubmit(event)">
+                <input type="hidden" id="hours-id">
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 mb-1">תאריך דיווח</label>
+                        <input type="date" id="hours-date" required class="w-full border rounded-lg p-2">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 mb-1">שעות מנוע נוכחיות</label>
+                        <input type="number" id="hours-value" required class="w-full border rounded-lg p-2">
+                    </div>
+                </div>
+                <div class="flex justify-end gap-2 mt-6">
+                    <button type="button" onclick="closeModal('hours-report-modal')" class="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg">ביטול</button>
+                    <button type="submit" class="px-4 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800">שמור דיווח</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    <!-- Add Modal -->
+    <div id="add-modal" class="modal">
+        <div class="bg-white rounded-2xl p-6 w-full max-w-2xl shadow-2xl overflow-y-auto max-h-[90vh]">
+            <h2 class="text-2xl font-bold mb-4">הוספת גנרטור חדש</h2>
+            <form id="add-form" onsubmit="handleAddSubmit(event)">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 mb-1">מיקום</label>
+                        <input type="text" id="add-location" required class="w-full border rounded-lg p-2">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 mb-1">הספק</label>
+                        <input type="text" id="add-power" class="w-full border rounded-lg p-2">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 mb-1">מק"ט יצרן</label>
+                        <input type="text" id="add-manufacturer-pn" class="w-full border rounded-lg p-2">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 mb-1">חברה מתחזקת</label>
+                        <select id="add-maintenance-company" class="w-full border rounded-lg p-2">
+                            <option value="">בחר חברה...</option>
+                            <option value="פ.ק אלקטרה">פ.ק אלקטרה</option>
+                            <option value="שמרלינג">שמרלינג</option>
+                            <option value="Power-on">Power-on</option>
+                            <option value="קטרפילר">קטרפילר</option>
+                            <option value="LIDOR">LIDOR</option>
+                            <option value="צבאי">צבאי</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 mb-1">מס' צה"לי</label>
+                        <input type="text" id="add-idf-number" class="w-full border rounded-lg p-2">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 mb-1">מזין את...</label>
+                        <input type="text" id="add-feeds" class="w-full border rounded-lg p-2">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 mb-1">ייעוד</label>
+                        <select id="add-purpose" class="w-full border rounded-lg p-2">
+                            <option value="פעיל">פעיל</option>
+                            <option value="גיבוי">גיבוי</option>
+                            <option value="סבב">סבב</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 mb-1">סטטוס</label>
+                        <select id="add-status" onchange="toggleFaultDescription('add')" class="w-full border rounded-lg p-2">
+                            <option value="תקין">תקין</option>
+                            <option value="תקול">תקול</option>
+                        </select>
+                    </div>
+                    <div id="add-fault-desc-container" style="display: none">
+                        <label class="block text-sm font-medium text-slate-700 mb-1">תיאור התקלה</label>
+                        <input type="text" id="add-fault-description" class="w-full border rounded-lg p-2">
+                    </div>
+                    <div class="md:col-span-2 border-t pt-4 mt-2">
+                        <h3 class="font-bold text-slate-800 mb-2">תחזוקה וחלפים</h3>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-sm font-medium text-slate-700 mb-1">כמות שמן (ליטר)</label>
+                                <input type="number" step="0.1" id="add-oil-liters" class="w-full border rounded-lg p-2">
+                            </div>
+                            <div class="flex items-center gap-2 pt-6">
+                                <input type="checkbox" id="add-has-kit" class="w-5 h-5 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500">
+                                <label for="add-has-kit" class="text-sm font-medium text-slate-700">יש קיט חלפים במלאי</label>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="md:col-span-2 border-t pt-4 mt-2">
+                        <h3 class="font-bold text-slate-800 mb-2">נתוני שעות מנוע אחרונים</h3>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-xs font-medium text-slate-500 mb-1">תאריך טיפול אחרון</label>
+                                <input type="date" id="add-last-check-date" class="w-full border rounded-lg p-2 text-sm">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-slate-500 mb-1">שעות מנוע בטיפול</label>
+                                <input type="number" id="add-last-check-hours" class="w-full border rounded-lg p-2 text-sm">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="md:col-span-2 border-t pt-4 mt-2">
+                        <div class="flex justify-between items-center mb-2">
+                            <h3 class="font-bold text-slate-800">אנשי קשר</h3>
+                            <button type="button" onclick="addContactField('add')" class="text-xs bg-slate-100 hover:bg-slate-200 px-2 py-1 rounded border flex items-center gap-1">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                                הוסף איש קשר
+                            </button>
+                        </div>
+                        <div id="add-contacts-container" class="space-y-2">
+                            <!-- Contact fields will be added here -->
+                        </div>
+                    </div>
+                </div>
+                <div class="mt-4">
+                    <label class="block text-sm font-medium text-slate-700 mb-1">הערות</label>
+                    <textarea id="add-notes" class="w-full border rounded-lg p-2" rows="2"></textarea>
+                </div>
+                <div class="flex justify-end gap-2 mt-6">
+                    <button type="button" onclick="closeModal('add-modal')" class="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg">ביטול</button>
+                    <button type="submit" class="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700">הוסף</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    <!-- Edit Modal -->
+    <div id="edit-modal" class="modal">
+        <div class="bg-white rounded-2xl p-6 w-full max-w-2xl shadow-2xl overflow-y-auto max-h-[90vh]">
+            <h2 class="text-2xl font-bold mb-4">עריכת פרטי גנרטור</h2>
+            <form id="edit-form" onsubmit="handleEditSubmit(event)">
+                <input type="hidden" id="edit-id">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 mb-1">מיקום</label>
+                        <input type="text" id="edit-location" required class="w-full border rounded-lg p-2">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 mb-1">הספק</label>
+                        <input type="text" id="edit-power" class="w-full border rounded-lg p-2">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 mb-1">מק"ט יצרן</label>
+                        <input type="text" id="edit-manufacturer-pn" class="w-full border rounded-lg p-2">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 mb-1">חברה מתחזקת</label>
+                        <select id="edit-maintenance-company" class="w-full border rounded-lg p-2">
+                            <option value="">בחר חברה...</option>
+                            <option value="פ.ק אלקטרה">פ.ק אלקטרה</option>
+                            <option value="שמרלינג">שמרלינג</option>
+                            <option value="Power-on">Power-on</option>
+                            <option value="קטרפילר">קטרפילר</option>
+                            <option value="LIDOR">LIDOR</option>
+                            <option value="צבאי">צבאי</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 mb-1">מס' צה"לי</label>
+                        <input type="text" id="edit-idf-number" class="w-full border rounded-lg p-2">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 mb-1">מזין את...</label>
+                        <input type="text" id="edit-feeds" class="w-full border rounded-lg p-2">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 mb-1">ייעוד</label>
+                        <select id="edit-purpose" class="w-full border rounded-lg p-2">
+                            <option value="פעיל">פעיל</option>
+                            <option value="גיבוי">גיבוי</option>
+                            <option value="סבב">סבב</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 mb-1">סטטוס</label>
+                        <select id="edit-status" onchange="toggleFaultDescription('edit')" class="w-full border rounded-lg p-2">
+                            <option value="תקין">תקין</option>
+                            <option value="תקול">תקול</option>
+                        </select>
+                    </div>
+                    <div id="edit-fault-desc-container" style="display: none">
+                        <label class="block text-sm font-medium text-slate-700 mb-1">תיאור התקלה</label>
+                        <input type="text" id="edit-fault-description" class="w-full border rounded-lg p-2">
+                    </div>
+                    <div class="md:col-span-2 border-t pt-4 mt-2">
+                        <h3 class="font-bold text-slate-800 mb-2">תחזוקה וחלפים</h3>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-sm font-medium text-slate-700 mb-1">כמות שמן (ליטר)</label>
+                                <input type="number" step="0.1" id="edit-oil-liters" class="w-full border rounded-lg p-2">
+                            </div>
+                            <div class="flex items-center gap-2 pt-6">
+                                <input type="checkbox" id="edit-has-kit" class="w-5 h-5 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500">
+                                <label for="edit-has-kit" class="text-sm font-medium text-slate-700">יש קיט חלפים במלאי</label>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="md:col-span-2 border-t pt-4 mt-2">
+                        <h3 class="font-bold text-slate-800 mb-2">נתוני שעות מנוע אחרונים</h3>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-xs font-medium text-slate-500 mb-1">תאריך טיפול אחרון</label>
+                                <input type="date" id="edit-last-check-date" class="w-full border rounded-lg p-2 text-sm">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-slate-500 mb-1">שעות מנוע בטיפול</label>
+                                <input type="number" id="edit-last-check-hours" class="w-full border rounded-lg p-2 text-sm">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="md:col-span-2 border-t pt-4 mt-2">
+                        <div class="flex justify-between items-center mb-2">
+                            <h3 class="font-bold text-slate-800">אנשי קשר</h3>
+                            <button type="button" onclick="addContactField('edit')" class="text-xs bg-slate-100 hover:bg-slate-200 px-2 py-1 rounded border flex items-center gap-1">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                                הוסף איש קשר
+                            </button>
+                        </div>
+                        <div id="edit-contacts-container" class="space-y-2">
+                            <!-- Contact fields will be added here -->
+                        </div>
+                    </div>
+                </div>
+                <div class="mt-4">
+                    <label class="block text-sm font-medium text-slate-700 mb-1">הערות</label>
+                    <textarea id="edit-notes" class="w-full border rounded-lg p-2" rows="2"></textarea>
+                </div>
+                <div class="flex justify-between gap-2 mt-6">
+                    <button type="button" onclick="handleDelete()" class="px-4 py-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 border border-red-200">מחק גנרטור</button>
+                    <div class="flex gap-2">
+                        <button type="button" onclick="closeModal('edit-modal')" class="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg">ביטול</button>
+                        <button type="submit" class="px-4 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800">שמור שינויים</button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+    <!-- Details Modal -->
+    <div id="details-modal" class="modal">
+        <div class="bg-white rounded-2xl p-6 w-full max-w-3xl shadow-2xl overflow-y-auto max-h-[90vh]">
+            <div class="flex justify-between items-center mb-4">
+                <div class="flex items-center gap-2">
+                    <h2 id="details-title" class="text-xl font-bold text-slate-900"></h2>
+                    <button id="details-edit-btn" class="edit-only p-2 hover:bg-slate-100 rounded-full text-slate-600" title="ערוך פרטים">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg>
+                    </button>
+                </div>
+                <button onclick="closeModal('details-modal')" class="p-2 hover:bg-slate-100 rounded-full text-slate-400">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                </button>
+            </div>
+            <div id="details-content" class="space-y-4">
+                <!-- Content injected by JS -->
+            </div>
+        </div>
+    </div>
+    <!-- Contacts Modal -->
+    <div id="contacts-modal" class="modal">
+        <div class="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl">
+            <h2 class="text-2xl font-bold mb-4" id="contacts-title">אנשי קשר</h2>
+            <div id="contacts-list" class="space-y-3 mb-6">
+                <!-- Contacts will be injected here -->
+            </div>
+            <div class="flex justify-end">
+                <button onclick="closeModal('contacts-modal')" class="px-4 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800">סגור</button>
+            </div>
+        </div>
+    </div>
+    <!-- Images Modal -->
+    <div id="images-modal" class="modal">
+        <div class="bg-white rounded-2xl p-6 w-full max-w-2xl shadow-2xl flex flex-col max-h-[90vh]">
+            <div class="flex justify-between items-center mb-4">
+                <h2 id="images-modal-title" class="text-2xl font-bold">תמונות גנרטור</h2>
+                <button onclick="closeModal('images-modal')" class="p-2 hover:bg-slate-100 rounded-full">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                </button>
+            </div>
+            
+            <div id="images-container" class="overflow-y-auto flex-1 p-1">
+                <div id="images-grid" class="image-grid">
+                    <!-- Images will be loaded here -->
+                </div>
+                <div id="no-images-msg" class="text-center py-12 text-slate-400 hidden">
+                    אין תמונות לגנרטור זה
+                </div>
+            </div>
+
+            <div class="edit-only mt-4 pt-4 border-t">
+                <label class="flex items-center justify-center gap-2 w-full py-3 bg-emerald-600 text-white rounded-xl font-bold hover:bg-emerald-700 cursor-pointer transition-all shadow-lg">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                    הוסף תמונה (מצלמה/גלריה)
+                    <input type="file" id="image-upload-input" accept="image/*" class="hidden" onchange="handleImageUpload(event)">
+                </label>
+            </div>
+        </div>
+    </div>
+
+    <!-- Confirm Delete Modal -->
+    <div id="confirm-delete-modal" class="modal">
+        <div class="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl">
+            <h2 class="text-xl font-bold mb-4 text-red-600">אישור מחיקה</h2>
+            <p class="text-slate-600 mb-6">האם אתה בטוח שברצונך למחוק את הגנרטור?</p>
+            <div class="flex justify-end gap-3">
+                <button onclick="closeModal('confirm-delete-modal')" class="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg">ביטול</button>
+                <button id="confirm-delete-btn" class="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700">מחק</button>
+            </div>
+        </div>
+    </div>
+    <!-- Export Modal -->
+    <div id="export-modal" class="modal">
+        <div class="bg-white rounded-2xl p-6 w-full max-w-2xl shadow-2xl overflow-y-auto max-h-[90vh]">
+            <div class="flex justify-between items-center mb-6">
+                <h2 class="text-2xl font-bold text-slate-900">ייצוא סיכום</h2>
+                <button onclick="closeModal('export-modal')" class="p-2 hover:bg-slate-100 rounded-full">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                </button>
+            </div>
+            
+            <div class="space-y-6">
+                <div>
+                    <div class="flex justify-between items-center mb-2">
+                        <label class="font-bold text-slate-700">סיכום מקוצר</label>
+                        <button onclick="copyToClipboard('export-short-text')" class="text-xs bg-emerald-50 text-emerald-700 px-3 py-1 rounded-lg border border-emerald-200 hover:bg-emerald-100 transition-colors flex items-center gap-1">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                            העתק
+                        </button>
+                    </div>
+                    <textarea id="export-short-text" readonly class="w-full h-32 border rounded-xl p-3 text-sm bg-slate-50 font-mono"></textarea>
+                </div>
+                
+                <div>
+                    <div class="flex justify-between items-center mb-2">
+                        <label class="font-bold text-slate-700">סיכום מפורט</label>
+                        <button onclick="copyToClipboard('export-detailed-text')" class="text-xs bg-emerald-50 text-emerald-700 px-3 py-1 rounded-lg border border-emerald-200 hover:bg-emerald-100 transition-colors flex items-center gap-1">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                            העתק
+                        </button>
+                    </div>
+                    <textarea id="export-detailed-text" readonly class="w-full h-64 border rounded-xl p-3 text-sm bg-slate-50 font-mono"></textarea>
+                </div>
+            </div>
+            
+            <div class="mt-6 flex justify-end">
+                <button onclick="closeModal('export-modal')" class="px-6 py-2 bg-slate-900 text-white rounded-xl hover:bg-slate-800 transition-colors">סגור</button>
+            </div>
+        </div>
+    </div>
+    <!-- Toast -->
+    <div id="toast">
+        <span id="toast-message"></span>
+    </div>
+    <script>
+        const SUPABASE_URL = 'https://acdyhgebzisyuqdskhqo.supabase.co';
+        const SUPABASE_KEY = 'sb_publishable__6ubU_rzTNBVlFd0wrgAHg_hXlqw3X2';
+        const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+        let generators = [];
+        let expandedRows = new Set();
+        let isEditMode = false;
+        let currentGeneratorId = null;
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            // fetchData(); // Don't fetch until mode is set
+        });
+
+        window.setMode = function(mode) {
+            if (mode === 'edit') {
+                const password = document.getElementById('entry-password').value;
+                if (password === '5555') {
+                    isEditMode = true;
+                    document.body.classList.add('edit-mode');
+                    closeModal('entry-modal');
+                    fetchData();
+                } else {
+                    showToast('סיסמה שגויה');
+                }
+            } else {
+                isEditMode = false;
+                document.body.classList.remove('edit-mode');
+                closeModal('entry-modal');
+                fetchData();
+            }
+        }
+
+        window.showEntryModal = function() {
+            document.getElementById('entry-modal').classList.add('active');
+            document.getElementById('entry-password').value = '';
+        }
+
+        window.fetchData = async function() {
+            expandedRows.clear();
+            const refreshBtn = document.getElementById('refresh-btn');
+            const originalContent = refreshBtn.innerHTML;
+            refreshBtn.disabled = true;
+            refreshBtn.innerHTML = `<svg class="animate-spin h-5 w-5 text-white inline" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> <span>טוען...</span>`;
+            
+            try {
+                const { data, error } = await supabaseClient
+                    .from('generators')
+                    .select('*')
+                    .order('created_at', { ascending: true });
+
+                if (error) throw error;
+
+                generators = data.map(g => ({
+                    ...g,
+                    _row: g.id,
+                    manufacturerPartNumber: g.manufacturer_part_number,
+                    maintenanceCompany: g.maintenance_company,
+                    idfNumber: g.idf_number,
+                    faultDescription: g.fault_description,
+                    oilFilterPN: g.oil_filter_pn,
+                    oilFilterStock: g.oil_filter_stock,
+                    lastMaintenanceDate: g.last_maintenance_date,
+                    engineHoursAtLastMaintenance: g.engine_hours_at_last_maintenance,
+                    currentHoursDate: g.current_hours_date
+                }));
+                
+                populateFilters();
+                renderTable();
+            } catch (error) {
+                console.error('Error fetching data:', error);
+                showToast(`שגיאה בטעינת נתונים: ${error.message}`);
+            } finally {
+                refreshBtn.disabled = false;
+                refreshBtn.innerHTML = originalContent;
+            }
+        }
+        function formatDate(dateString) {
+            if (!dateString) return '-';
+            try {
+                const date = new Date(dateString);
+                if (isNaN(date.getTime())) return dateString;
+                const d = String(date.getDate()).padStart(2, '0');
+                const m = String(date.getMonth() + 1).padStart(2, '0');
+                const y = date.getFullYear();
+                return `${d}-${m}-${y}`;
+            } catch (e) {
+                return dateString;
+            }
+        }
+        function formatDateShort(dateString) {
+            if (!dateString) return '-';
+            try {
+                const date = new Date(dateString);
+                if (isNaN(date.getTime())) return dateString;
+                const d = String(date.getDate()).padStart(2, '0');
+                const m = String(date.getMonth() + 1).padStart(2, '0');
+                return `${d}-${m}`;
+            } catch (e) {
+                return dateString;
+            }
+        }
+        function formatDateForInput(dateString) {
+            const date = dateString ? new Date(dateString) : new Date();
+            if (isNaN(date.getTime())) return '';
+            const y = date.getFullYear();
+            const m = String(date.getMonth() + 1).padStart(2, '0');
+            const d = String(date.getDate()).padStart(2, '0');
+            return `${y}-${m}-${d}`;
+        }
+        function getWhatsAppLink(phone) {
+            if (!phone) return '#';
+            let clean = phone.replace(/\D/g, '');
+            // If it starts with 0, replace it with 972 (Israel country code)
+            if (clean.startsWith('0')) {
+                clean = '972' + clean.substring(1);
+            } 
+            // If it starts with 5 and has 9 digits, it's a mobile without leading 0
+            else if (clean.length === 9 && clean.startsWith('5')) {
+                clean = '972' + clean;
+            }
+            return `https://wa.me/${clean}`;
+        }
+function calculateDaysToMaintenance(gen) {
+    // במידה והגנרטור מוגדר כ"סבב" או כ"גיבוי" - לא מציגים ימים
+    if (gen.purpose === 'סבב' || gen.purpose === 'גיבוי') return null;
+    
+    let lastMaintHours = 0;
+    let lastMaintDate = null;
+    let lastReportHours = 0;
+    let lastReportDate = null;
+    
+    // חילוץ נתוני הטיפול האחרון
+    try {
+        const maintData = JSON.parse(gen.lastMaintenanceDate || '{}');
+        lastMaintHours = parseFloat(maintData.hours) || 0;
+        lastMaintDate = maintData.date ? new Date(maintData.date) : null;
+    } catch(e) {
+        // גיבוי למקרה של פורמט ישן
+        lastMaintDate = gen.lastMaintenanceDate ? new Date(gen.lastMaintenanceDate) : null;
+        lastMaintHours = parseFloat(gen.last_check_hours) || 0;
+    }
+    
+    // בדיקה אם יש דיווח שעות נפרד (לאחר הטיפול)
+    let hasHoursReport = false;
+    try {
+        const hoursData = JSON.parse(gen.engineHoursAtLastMaintenance || '{}');
+        lastReportHours = parseFloat(hoursData.hours) || 0;
+        lastReportDate = hoursData.date ? new Date(hoursData.date) : null;
+        
+        // בדיקה אם דיווח השעות הוא אחרי הטיפול האחרון
+        if (lastReportDate && lastMaintDate && lastReportDate > lastMaintDate) {
+            hasHoursReport = true;
+        }
+    } catch(e) {
+        // אם אין דיווח נפרד, נשתמש בנתוני הטיפול
+        lastReportHours = lastMaintHours;
+        lastReportDate = lastMaintDate;
+    }
+    
+    // אם אין תאריך טיפול - אי אפשר לחשב
+    if (!lastMaintDate || isNaN(lastMaintDate.getTime())) return null;
+    
+    // חישוב כמה שעות עברו מאז הטיפול האחרון
+    let hoursPassedSinceMaintenance = 0;
+    
+    if (hasHoursReport && lastReportDate) {
+        // יש דיווח שעות לאחר הטיפול
+        hoursPassedSinceMaintenance = lastReportHours - lastMaintHours;
+        
+        // חישוב כמה ימים עברו מאז הדיווח האחרון
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        lastReportDate.setHours(0, 0, 0, 0);
+        const daysSinceReport = Math.floor((today.getTime() - lastReportDate.getTime()) / (1000 * 60 * 60 * 24));
+        
+        // הוספת שעות שעברו מאז הדיווח (24 שעות ביום)
+        hoursPassedSinceMaintenance += (daysSinceReport * 24);
+        
+    } else {
+        // אין דיווח שעות - חישוב לפי תאריך הטיפול בלבד
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        lastMaintDate.setHours(0, 0, 0, 0);
+        const daysSinceMaintenance = Math.floor((today.getTime() - lastMaintDate.getTime()) / (1000 * 60 * 60 * 24));
+        
+        // 24 שעות ביום
+        hoursPassedSinceMaintenance = daysSinceMaintenance * 24;
+    }
+    
+    // חישוב כמה שעות נותרו עד ל-500 שעות
+    const hoursRemaining = 500 - hoursPassedSinceMaintenance;
+    
+    // המרה לימים (24 שעות ביום)
+    const daysRemaining = Math.floor(hoursRemaining / 24);
+    
+    return daysRemaining;
+}
+        function getUrgencyScore(gen) {
+            if (gen.purpose === 'גיבוי' || gen.purpose === 'סבב') return 10000;
+            const days = calculateDaysToMaintenance(gen);
+            if (gen.status === 'תקול') return -10000;
+            if (days === null) return 5000;
+            return days;
+        }
+        window.toggleRow = function(rowId) {
+            const id = String(rowId);
+            if (expandedRows.has(id)) {
+                expandedRows.delete(id);
+            } else {
+                expandedRows.add(id);
+            }
+            renderTable();
+        }
+
+        function populateFilters() {
+            const locSelect = document.getElementById('filter-location');
+            const compSelect = document.getElementById('filter-company');
+            
+            const prevLoc = locSelect.value;
+            const prevComp = compSelect.value;
+            
+            const activeGenerators = generators.filter(g => g.status !== 'deleted');
+            
+            const locations = [...new Set(activeGenerators.map(g => g.location).filter(Boolean))].sort();
+            const companies = [...new Set(activeGenerators.map(g => g.maintenanceCompany).filter(Boolean))].sort();
+            
+            locSelect.innerHTML = '<option value="">כל המיקומים</option>' + 
+                locations.map(l => `<option value="${l}">${l}</option>`).join('');
+            
+            compSelect.innerHTML = '<option value="">כל החברות</option>' + 
+                companies.map(c => `<option value="${c}">${c}</option>`).join('');
+
+            locSelect.value = prevLoc;
+            compSelect.value = prevComp;
+        }
+
+        function renderTable() {
+            const tbody = document.getElementById('generator-table-body');
+            const locFilter = document.getElementById('filter-location').value;
+            const compFilter = document.getElementById('filter-company').value;
+
+            const filtered = generators
+                .filter(g => {
+                    if (g.status === 'deleted') return false;
+                    if (locFilter && g.location !== locFilter) return false;
+                    if (compFilter && g.maintenanceCompany !== compFilter) return false;
+                    return true;
+                })
+                .sort((a, b) => getUrgencyScore(a) - getUrgencyScore(b));
+
+            tbody.innerHTML = filtered.map(gen => {
+                const days = calculateDaysToMaintenance(gen);
+                const isExpanded = expandedRows.has(String(gen.id));
+                const oilLiters = gen.oilFilterStock || '';
+                let rowClass = ''; // Default white
+                let daysDisplay = '';
+                
+                if (gen.purpose === 'גיבוי') {
+                    daysDisplay = '<span class="text-slate-400">--גיבוי--</span>';
+                } else if (gen.purpose === 'סבב') {
+                    daysDisplay = '<span class="text-slate-400">--סבב--</span>';
+                } else {
+                    if (gen.status === 'תקול') rowClass = 'overdue';
+                    else if (days !== null && days < 7) rowClass = 'warning';
+                    
+                    let sign = "";
+                    if (days > 0) sign = "+";
+                    else if (days < 0) sign = "-";
+                    
+                    const displayVal = days === 0 ? "0" : sign + Math.abs(days);
+                    
+                    daysDisplay = `<div class="font-bold text-lg ${days <= 0 ? 'text-red-600' : 'text-slate-700'}">
+                        ${displayVal}
+                    </div>`;
+                }
+
+                const hasKit = gen.oilFilterPN === 'Yes' || gen.oilFilterPN === 'יש' || gen.oilFilterPN === true || gen.oilFilterPN === 'true';
+
+                let expandedContent = '';
+                if (isExpanded) {
+                    let contacts = [];
+                    try { 
+                        contacts = JSON.parse(gen.contacts || '[]'); 
+                        if (!Array.isArray(contacts)) contacts = [];
+                    } catch(e) {
+                        if (gen.contacts && gen.contacts.trim()) {
+                            contacts = [{ name: gen.contacts, phone: '', role: 'מידע ישן' }];
+                        }
+                    }
+
+                    // Engine hours logic
+                    let lastMaintHours = 0;
+                    let lastMaintDate = null;
+                    let lastReportHours = 0;
+                    let lastReportDate = null;
+                    let hasHoursReport = false;
+
+                    try {
+                        const maintData = JSON.parse(gen.lastMaintenanceDate || '{}');
+                        lastMaintHours = parseFloat(maintData.hours) || 0;
+                        lastMaintDate = maintData.date ? new Date(maintData.date) : null;
+                    } catch(e) {
+                        lastMaintDate = gen.lastMaintenanceDate ? new Date(gen.lastMaintenanceDate) : null;
+                        lastMaintHours = parseFloat(gen.last_check_hours) || 0;
+                    }
+
+                    try {
+                        const hoursData = JSON.parse(gen.engineHoursAtLastMaintenance || '{}');
+                        lastReportHours = parseFloat(hoursData.hours) || 0;
+                        lastReportDate = hoursData.date ? new Date(hoursData.date) : null;
+                        if (lastReportDate && lastMaintDate && lastReportDate > lastMaintDate) {
+                            hasHoursReport = true;
+                        }
+                    } catch(e) {}
+
+                    expandedContent = `
+                        <tr class="bg-slate-50 border-b">
+                            <td colspan="8" class="p-3">
+                                <div class="relative grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 text-sm">
+                                    <div class="sm:hidden flex justify-between items-start">
+                                        <div>
+                                            <span class="font-bold text-slate-500">מק"ט:</span> ${gen.manufacturerPartNumber || '-'}
+                                        </div>
+                                        <button onclick="event.stopPropagation(); openEditModal('${gen.id}')" class="edit-only text-slate-400 hover:text-slate-600 transition-colors" title="ערוך">
+                                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+                                        </button>
+                                    </div>
+                                    <div class="hidden sm:block absolute left-0 top-0">
+                                        <button onclick="event.stopPropagation(); openEditModal('${gen.id}')" class="edit-only p-1 text-slate-400 hover:text-slate-600 transition-colors" title="ערוך">
+                                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+                                        </button>
+                                    </div>
+                                    <div class="md:hidden">
+                                        <span class="font-bold text-slate-500">מס' צה"לי:</span> ${gen.idfNumber || '-'}
+                                    </div>
+                                    <div class="xl:hidden">
+                                        <span class="font-bold text-slate-500">חברה מתחזקת:</span> ${gen.maintenanceCompany || '-'}
+                                    </div>
+                                    
+                                    <div class="col-span-full border-t pt-1 mt-1">
+                                        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                                            <div class="space-y-0.5">
+                                                ${hasHoursReport ? `
+                                                    <div class="flex items-center gap-2">
+                                                        <span class="font-bold text-slate-500">דיווח שעות אחרון:</span> 
+                                                        <span class="font-medium text-slate-900">${lastReportHours} ש'</span>
+                                                        <span class="text-xs text-slate-400 mr-1">(${formatDate(lastReportDate)})</span>
+                                                    </div>
+                                                ` : ''}
+                                                <div class="flex items-center gap-2">
+                                                    <span class="font-bold text-slate-500">טיפול אחרון:</span> 
+                                                    <span class="font-medium text-slate-900">${lastMaintHours} ש'</span>
+                                                    <span class="text-xs text-slate-400 mr-1">(${formatDate(lastMaintDate)})</span>
+                                                </div>
+                                            </div>
+                                            <div class="flex flex-wrap gap-2">
+                                                <button onclick="event.stopPropagation(); openImagesModal('${gen.id}')" class="bg-blue-600 text-white px-3 py-1.5 rounded text-xs font-bold hover:bg-blue-700 transition-colors flex items-center gap-1">
+                                                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
+                                                    תמונות
+                                                </button>
+                                                <button onclick="event.stopPropagation(); openHoursReportModal('${gen.id}')" class="edit-only bg-white border border-slate-300 text-slate-700 px-3 py-1.5 rounded text-xs font-bold hover:bg-slate-50 transition-colors">דיווח שעות</button>
+                                                <button onclick="event.stopPropagation(); openMaintenanceModal('${gen.id}')" class="edit-only bg-white border border-slate-300 text-slate-700 px-3 py-1.5 rounded text-xs font-bold hover:bg-slate-50 transition-colors">דיווח טיפול</button>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="col-span-full border-t pt-1">
+                                        <span class="font-bold text-slate-500">אנשי קשר:</span>
+                                        <div class="flex flex-wrap gap-2 mt-1">
+                                            ${contacts.length > 0 ? contacts.map(c => `
+                                                <div class="bg-white border rounded px-2 py-1 flex items-center gap-2">
+                                                    <span class="font-medium">${c.name}</span>
+                                                    <span class="text-xs text-slate-400">${c.role || ''}</span>
+                                                    ${c.phone ? `
+                                                        <a href="tel:${c.phone}" class="text-slate-400 hover:text-slate-600">
+                                                            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+                                                        </a>
+                                                        <a href="${getWhatsAppLink(c.phone)}" target="_blank" class="text-emerald-500 hover:text-emerald-700">
+                                                            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="currentColor" viewBox="0 0 16 16"><path d="M13.601 2.326A7.854 7.854 0 0 0 7.994 0C3.627 0 .068 3.558.064 7.926c0 1.399.366 2.76 1.061 3.972L0 16l4.14-1.086c1.158.633 2.451.963 3.761.971h.004c4.366 0 7.925-3.559 7.929-7.929 0-2.117-.823-4.107-2.322-5.607zm-5.607 12.756h-.003c-1.185-.001-2.347-.319-3.361-.919l-.24-.142-2.498.656.668-2.438-.156-.248a6.57 6.57 0 0 1-1.006-3.504c.003-3.623 2.956-6.576 6.581-6.576 1.757 0 3.408.684 4.65 1.926a6.547 6.547 0 0 1 1.922 4.653c-.003 3.623-2.956 6.577-6.58 6.577zm3.557-4.873c-.195-.097-1.155-.57-1.334-.635-.179-.066-.31-.097-.44.097-.13.195-.503.635-.617.765-.114.13-.228.146-.423.049-.195-.097-.824-.304-1.57-.97-.58-.517-.972-1.155-1.086-1.35-.114-.195-.012-.301.085-.398.088-.087.195-.228.293-.34.098-.113.13-.195.195-.325.066-.13.033-.244-.017-.341-.05-.097-.44-1.06-.603-1.456-.158-.384-.317-.332-.44-.338-.114-.005-.245-.006-.375-.006-.13 0-.341.049-.52.244-.179.195-.684.668-.684 1.63 0 .963.7 1.894.797 2.025.098.13 1.377 2.102 3.335 2.947.466.201.829.321 1.112.411.468.148.894.127 1.231.077.376-.056 1.155-.472 1.317-.928.162-.456.162-.846.114-.928-.048-.082-.179-.13-.375-.227z"/></svg>
+                                        </a>
+                                    ` : ''}
+                                </div>
+                            `).join('') : '<span class="text-slate-400 italic">אין אנשי קשר</span>'}
+                        </div>
+                    </div>
+                                    ${gen.notes ? `
+                                        <div class="col-span-full lg:hidden border-t pt-1">
+                                            <span class="font-bold text-slate-500">הערות:</span> ${gen.notes}
+                                        </div>
+                                    ` : ''}
+                </div>
+            </td>
+        </tr>
+    `;
+                }
+
+                return `
+                    <tr class="${rowClass} border-b hover:bg-slate-50 transition-colors cursor-pointer ${isExpanded ? 'bg-slate-50' : ''}" onclick="toggleRow('${gen.id}')">
+                        <td class="p-2">
+                            <div>
+                                <div class="font-bold text-slate-900 text-sm">${gen.location}</div>
+                                <div class="text-[10px] text-slate-500">${gen.power || '-'}</div>
+                                ${gen.status === 'תקול' ? `
+                                    <span class="px-1.5 py-0.5 rounded-full text-[9px] font-bold uppercase bg-red-100 text-red-700 border border-red-200">
+                                        תקול
+                                    </span>
+                                ` : ''}
+                            </div>
+                        </td>
+                        <td class="p-2 text-center hidden sm:table-cell text-xs">
+                            ${gen.manufacturerPartNumber || '-'}
+                        </td>
+                        <td class="p-2 text-center hidden md:table-cell text-xs">
+                            ${gen.idfNumber || '-'}
+                        </td>
+                        <td class="p-2 text-center">
+                            ${daysDisplay}
+                        </td>
+                        <td class="p-2">
+                            <div class="text-[10px] space-y-0.5">
+                                <div class="font-medium">${(() => {
+                                    try {
+                                        const data = JSON.parse(gen.lastMaintenanceDate || '{}');
+                                        return formatDateShort(data.date);
+                                    } catch(e) { return formatDateShort(gen.lastMaintenanceDate); }
+                                })()}</div>
+                                <div class="text-slate-500">${(() => {
+                                    try {
+                                        const data = JSON.parse(gen.lastMaintenanceDate || '{}');
+                                        return (data.hours || 0) + ' ש';
+                                    } catch(e) { 
+                                        let h = gen.engineHoursAtLastMaintenance;
+                                        try { h = JSON.parse(h).hours; } catch(err) {}
+                                        return (h || 0) + ' ש';
+                                    }
+                                })()}</div>
+                            </div>
+                        </td>
+                        <td class="p-2 text-center">
+                            <div class="flex flex-col items-center">
+                                ${hasKit ? 
+                                    '<span class="text-emerald-600 text-lg font-bold leading-none">✓</span>' : 
+                                    '<span class="text-red-500 text-lg font-bold leading-none">✕</span>'}
+                                ${oilLiters ? `<span class="text-[9px] text-slate-500 mt-0.5">${oilLiters} ליטר</span>` : ''}
+                            </div>
+                        </td>
+                        <td class="p-2 text-center hidden xl:table-cell text-xs">
+                            ${gen.maintenanceCompany || '-'}
+                        </td>
+                        <td class="p-2 hidden lg:table-cell text-[10px] max-w-[150px] truncate">
+                            ${gen.notes || '-'}
+                        </td>
+                    </tr>
+                    ${expandedContent}
+                `;
+            }).join('');
+        }
+        function renderStats() {
+            // Unused
+        }
+        window.toggleFaultDescription = function(prefix) {
+            const status = document.getElementById(`${prefix}-status`).value;
+            const container = document.getElementById(`${prefix}-fault-desc-container`);
+            if (status === 'תקול') {
+                container.style.display = 'block';
+            } else {
+                container.style.display = 'none';
+            }
+        }
+        // Modal Handlers
+        function parseDate(str) {
+            if (!str) return null;
+            const parts = str.split('-');
+            if (parts.length === 3) {
+                // If it's already yyyy-mm-dd (from some legacy or browser)
+                if (parts[0].length === 4) return str;
+                // Assume dd-mm-yyyy -> yyyy-mm-dd
+                return `${parts[2]}-${parts[1]}-${parts[0]}`;
+            }
+            return str;
+        }
+        function openMaintenanceModal(id) {
+            const gen = generators.find(g => g._row == id);
+            document.getElementById('maint-id').value = id;
+            
+            let currentHours = '';
+            try {
+                const data = JSON.parse(gen.engineHoursAtLastMaintenance || '{}');
+                currentHours = data.hours || '';
+            } catch(e) {
+                currentHours = gen.engineHoursAtLastMaintenance || '';
+            }
+            
+            document.getElementById('maint-hours').value = currentHours;
+            document.getElementById('maint-date').value = formatDateForInput(new Date());
+            document.getElementById('maintenance-modal').classList.add('active');
+        }
+        window.openHoursReportModal = function(id) {
+            const gen = generators.find(g => g._row == id);
+            document.getElementById('hours-id').value = id;
+            
+            let currentHours = '';
+            try {
+                const data = JSON.parse(gen.engineHoursAtLastMaintenance || '{}');
+                currentHours = data.hours || '';
+            } catch(e) {
+                currentHours = gen.engineHoursAtLastMaintenance || '';
+            }
+            document.getElementById('hours-value').value = currentHours;
+            document.getElementById('hours-date').value = formatDateForInput(new Date());
+            document.getElementById('hours-report-modal').classList.add('active');
+        }
+        async function handleHoursReportSubmit(event) {
+            event.preventDefault();
+            const id = document.getElementById('hours-id').value;
+            const hours = document.getElementById('hours-value').value;
+            const date = parseDate(document.getElementById('hours-date').value);
+            const payload = {
+                action: 'report_hours',
+                id,
+                engineHours: hours,
+                date
+            };
+            await sendUpdate(payload);
+            closeModal('hours-report-modal');
+            closeModal('details-modal');
+            event.target.reset();
+        }
+        window.addContactField = function(type, data = { name: '', phone: '', role: '' }) {
+            const container = document.getElementById(`${type}-contacts-container`);
+            const div = document.createElement('div');
+            div.className = 'flex gap-2 items-start contact-row';
+            div.innerHTML = `
+                <input type="text" placeholder="שם" value="${data.name}" class="contact-name w-1/3 border rounded p-1 text-sm">
+                <input type="text" placeholder="טלפון" value="${data.phone}" class="contact-phone w-1/3 border rounded p-1 text-sm">
+                <input type="text" placeholder="תפקיד" value="${data.role}" class="contact-role w-1/3 border rounded p-1 text-sm">
+                <button type="button" onclick="this.parentElement.remove()" class="text-red-500 p-1 hover:bg-red-50 rounded">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                </button>
+            `;
+            container.appendChild(div);
+        }
+        function getContactsFromContainer(type) {
+            const container = document.getElementById(`${type}-contacts-container`);
+            const rows = container.querySelectorAll('.contact-row');
+            const contacts = [];
+            rows.forEach(row => {
+                const name = row.querySelector('.contact-name').value.trim();
+                const phone = row.querySelector('.contact-phone').value.trim();
+                const role = row.querySelector('.contact-role').value.trim();
+                if (name || phone) {
+                    contacts.push({ name, phone, role });
+                }
+            });
+            return JSON.stringify(contacts);
+        }
+        window.openAddModal = function() {
+            document.getElementById('add-form').reset();
+            document.getElementById('add-contacts-container').innerHTML = '';
+            addContactField('add');
+            toggleFaultDescription('add');
+            document.getElementById('add-modal').classList.add('active');
+        }
+        window.openEditModal = function(id) {
+            const gen = generators.find(g => g._row == id);
+            if (!gen) return;
+            document.getElementById('edit-id').value = id;
+            document.getElementById('edit-location').value = gen.location || '';
+            document.getElementById('edit-power').value = gen.power || '';
+            document.getElementById('edit-manufacturer-pn').value = gen.manufacturerPartNumber || '';
+            document.getElementById('edit-maintenance-company').value = gen.maintenanceCompany || '';
+            document.getElementById('edit-idf-number').value = gen.idfNumber || '';
+            document.getElementById('edit-feeds').value = gen.feeds || '';
+            document.getElementById('edit-purpose').value = gen.purpose || 'פעיל';
+            document.getElementById('edit-status').value = gen.status || 'תקין';
+            document.getElementById('edit-fault-description').value = gen.faultDescription || '';
+            toggleFaultDescription('edit');
+            
+            document.getElementById('edit-oil-liters').value = gen.oilFilterStock || '';
+            document.getElementById('edit-has-kit').checked = gen.oilFilterPN === 'Yes' || gen.oilFilterPN === 'יש' || gen.oilFilterPN === true || gen.oilFilterPN === 'true';
+            
+            // Handle JSON for maintenance date
+            let maintDate = '';
+            let maintHours = 0;
+            try {
+                const data = JSON.parse(gen.lastMaintenanceDate || '{}');
+                maintDate = data.date || gen.lastMaintenanceDate;
+                maintHours = data.hours || gen.engineHoursAtLastMaintenance || 0;
+            } catch(e) {
+                maintDate = gen.lastMaintenanceDate;
+                maintHours = gen.engineHoursAtLastMaintenance || 0;
+            }
+            
+            document.getElementById('edit-last-check-date').value = formatDateForInput(maintDate);
+            document.getElementById('edit-last-check-hours').value = maintHours;
+            
+            // Structured contacts
+            const container = document.getElementById('edit-contacts-container');
+            container.innerHTML = '';
+            let contacts = [];
+            try {
+                contacts = JSON.parse(gen.contacts || '[]');
+            } catch(e) {
+                contacts = [];
+            }
+            if (contacts.length === 0) {
+                addContactField('edit');
+            } else {
+                contacts.forEach(c => addContactField('edit', c));
+            }
+            document.getElementById('edit-notes').value = gen.notes || '';
+            
+            document.getElementById('edit-modal').classList.add('active');
+        }
+        window.openSettings = function() {
+            // Settings modal removed as setup is now handled by SQL
+            showToast('הגדרות מנוהלות דרך Supabase');
+        }
+        window.openExportModal = function() {
+            const locFilter = document.getElementById('filter-location').value;
+            const compFilter = document.getElementById('filter-company').value;
+
+            const filtered = generators.filter(g => {
+                if (g.status === 'deleted') return false;
+                if (locFilter && g.location !== locFilter) return false;
+                if (compFilter && g.maintenanceCompany !== compFilter) return false;
+                return true;
+            });
+            // Short Summary (Main Table Details)
+            let short = "סיכום טבלת גנרטורים:\n\n";
+            filtered.forEach(gen => {
+                const days = calculateDaysToMaintenance(gen);
+                let daysDisplay = "";
+                if (gen.purpose === 'גיבוי') daysDisplay = "גיבוי";
+                else if (gen.purpose === 'סבב') daysDisplay = "סבב";
+                else if (days !== null) {
+                    let sign = days > 0 ? "+" : (days < 0 ? "-" : "");
+                    daysDisplay = days === 0 ? "0" : sign + Math.abs(days);
+                }
+                let lastMaintShort = "";
+                try {
+                    const data = JSON.parse(gen.lastMaintenanceDate || '{}');
+                    lastMaintShort = `${formatDateShort(data.date)} (${data.hours || 0} ש')`;
+                } catch(e) { lastMaintShort = formatDateShort(gen.lastMaintenanceDate); }
+                const hasKit = gen.oilFilterPN === 'Yes' || gen.oilFilterPN === 'יש' || gen.oilFilterPN === true || gen.oilFilterPN === 'true';
+                short += `• ${gen.location} | ${gen.power || '-'} | ${gen.status === 'תקול' ? 'תקול' : 'תקין'}\n`;
+                short += `  ימים לטיפול הבא: ${daysDisplay}\n`;
+                short += `  טיפול אחרון: ${lastMaintShort}\n`;
+                short += `  קיט: ${hasKit ? 'יש' : 'אין'}\n\n`;
+            });
+            // Detailed Summary (Full Details + Contacts)
+            let detailed = "סיכום פרטי גנרטורים מלאים:\n\n";
+            filtered.forEach(gen => {
+                const days = calculateDaysToMaintenance(gen);
+                let maintStr = "";
+                if (gen.purpose === 'גיבוי') maintStr = "גיבוי";
+                else if (gen.purpose === 'סבב') maintStr = "סבב";
+                else if (days !== null) {
+                    let sign = days > 0 ? "+" : (days < 0 ? "-" : "");
+                    maintStr = days === 0 ? "0" : sign + Math.abs(days);
+                }
+                let lastMaintDate = '-';
+                let lastMaintHours = '0';
+                let lastMaintParts = 'לא צוין';
+                try {
+                    const data = JSON.parse(gen.lastMaintenanceDate || '{}');
+                    lastMaintDate = formatDate(data.date);
+                    lastMaintHours = data.hours || '0';
+                    lastMaintParts = data.parts || 'לא צוין';
+                } catch(e) { lastMaintDate = formatDate(gen.lastMaintenanceDate); }
+                const hasKit = gen.oilFilterPN === 'Yes' || gen.oilFilterPN === 'יש' || gen.oilFilterPN === true || gen.oilFilterPN === 'true';
+                detailed += `מיקום: ${gen.location}\n`;
+                detailed += `הספק: ${gen.power || '-'}\n`;
+                detailed += `מק"ט יצרן: ${gen.manufacturerPartNumber || '-'}\n`;
+                detailed += `חברה מתחזקת: ${gen.maintenanceCompany || '-'}\n`;
+                detailed += `מס' צה"לי: ${gen.idfNumber || '-'}\n`;
+                detailed += `מזין את: ${gen.feeds || '-'}\n`;
+                detailed += `ייעוד: ${gen.purpose || '-'}\n`;
+                detailed += `סטטוס: ${gen.status}\n`;
+                if (gen.status === 'תקול' && gen.faultDescription) detailed += `תקלה: ${gen.faultDescription}\n`;
+                detailed += `שעות מנוע: ${(() => {
+                    try { return JSON.parse(gen.engineHoursAtLastMaintenance || '{}').hours || 0; }
+                    catch(e) { return gen.engineHoursAtLastMaintenance || 0; }
+                })()}\n`;
+                detailed += `טיפול אחרון: ${lastMaintDate} (${lastMaintHours} ש')\n`;
+                detailed += `קיט: ${hasKit ? 'יש' : 'אין'}\n`;
+                detailed += `כמות שמן: ${gen.oilFilterStock || '-'}\n`;
+                
+                // Contacts
+                let contacts = [];
+                try { contacts = JSON.parse(gen.contacts || '[]'); } catch(e) {}
+                if (contacts.length > 0) {
+                    detailed += `אנשי קשר:\n`;
+                    contacts.forEach(c => {
+                        detailed += `  - ${c.name}${c.role ? ' (' + c.role + ')' : ''}: ${c.phone}\n`;
+                    });
+                }
+                if (gen.notes) detailed += `הערות: ${gen.notes}\n`;
+                detailed += `-------------------\n\n`;
+            });
+            document.getElementById('export-short-text').value = short;
+            document.getElementById('export-detailed-text').value = detailed;
+            document.getElementById('export-modal').classList.add('active');
+        }
+        async function copyToClipboard(elementId) {
+            const textarea = document.getElementById(elementId);
+            try {
+                await navigator.clipboard.writeText(textarea.value);
+                showToast('הטקסט הועתק ללוח');
+            } catch (err) {
+                textarea.select();
+                document.execCommand('copy');
+                showToast('הטקסט הועתק ללוח');
+            }
+        }
+        window.closeModal = function(id) {
+            document.getElementById(id).classList.remove('active');
+        }
+        window.reportHours = function(id) {
+            openHoursReportModal(id);
+        }
+        window.reportMaintenance = function(id) {
+            openMaintenanceModal(id);
+        }
+        window.logout = function() {
+            isEditMode = false;
+            document.body.classList.remove('edit-mode');
+            fetchData();
+        }
+        window.applyFilters = function() {
+            renderTable();
+        }
+        async function testConnection() {
+            showToast('בודק חיבור ל-Supabase...');
+            try {
+                const { data, error } = await supabaseClient.from('generators').select('count', { count: 'exact', head: true });
+                if (error) throw error;
+                showToast('החיבור ל-Supabase הצליח!');
+            } catch (error) {
+                showToast('שגיאת חיבור: ' + error.message);
+            }
+        }
+        async function handleMaintenanceSubmit(event) {
+            event.preventDefault();
+            const id = document.getElementById('maint-id').value;
+            const hours = document.getElementById('maint-hours').value;
+            const performer = document.getElementById('maint-performer').value;
+            const date = parseDate(document.getElementById('maint-date').value);
+            const payload = {
+                action: 'maintenance',
+                id,
+                engineHours: hours,
+                date,
+                performer,
+                parts: ""
+            };
+            await sendUpdate(payload);
+            closeModal('maintenance-modal');
+            closeModal('details-modal');
+            event.target.reset();
+        }
+        async function handleAddSubmit(event) {
+            event.preventDefault();
+            
+            const lastMaintDateStr = document.getElementById('add-last-check-date').value;
+            const lastMaintHours = document.getElementById('add-last-check-hours').value;
+            
+            const maintJson = JSON.stringify({
+                date: lastMaintDateStr,
+                hours: lastMaintHours,
+                parts: ''
+            });
+            
+            const hoursJson = JSON.stringify({
+                date: lastMaintDateStr,
+                hours: lastMaintHours
+            });
+            const payload = {
+                action: 'add',
+                data: {
+                    location: document.getElementById('add-location').value,
+                    power: document.getElementById('add-power').value,
+                    manufacturerPartNumber: document.getElementById('add-manufacturer-pn').value,
+                    maintenanceCompany: document.getElementById('add-maintenance-company').value,
+                    idfNumber: document.getElementById('add-idf-number').value,
+                    feeds: document.getElementById('add-feeds').value,
+                    purpose: document.getElementById('add-purpose').value,
+                    status: document.getElementById('add-status').value,
+                    faultDescription: document.getElementById('add-fault-description').value,
+                    
+                    oilFilterStock: document.getElementById('add-oil-liters').value,
+                    oilFilterPN: document.getElementById('add-has-kit').checked ? 'Yes' : 'No',
+                    
+                    lastMaintenanceDate: maintJson,
+                    engineHoursAtLastMaintenance: hoursJson,
+                    
+                    contacts: getContactsFromContainer('add'),
+                    notes: document.getElementById('add-notes').value
+                }
+            };
+            await sendUpdate(payload);
+            closeModal('add-modal');
+            event.target.reset();
+        }
+        async function handleEditSubmit(event) {
+            event.preventDefault();
+            const id = document.getElementById('edit-id').value;
+            const gen = generators.find(g => g._row == id);
+            
+            const lastMaintDateStr = document.getElementById('edit-last-check-date').value;
+            const lastMaintHours = document.getElementById('edit-last-check-hours').value;
+            
+            let maintJson = '';
+            try {
+                const existing = JSON.parse(gen.lastMaintenanceDate || '{}');
+                maintJson = JSON.stringify({
+                    date: lastMaintDateStr,
+                    hours: lastMaintHours,
+                    parts: existing.parts || ''
+                });
+            } catch(e) {
+                maintJson = JSON.stringify({
+                    date: lastMaintDateStr,
+                    hours: lastMaintHours,
+                    parts: ''
+                });
+            }
+            let hoursJson = JSON.stringify({
+                date: lastMaintDateStr,
+                hours: lastMaintHours
+            });
+            const payload = {
+                action: 'update',
+                id,
+                data: {
+                    location: document.getElementById('edit-location').value,
+                    power: document.getElementById('edit-power').value,
+                    manufacturerPartNumber: document.getElementById('edit-manufacturer-pn').value,
+                    maintenanceCompany: document.getElementById('edit-maintenance-company').value,
+                    idfNumber: document.getElementById('edit-idf-number').value,
+                    feeds: document.getElementById('edit-feeds').value,
+                    purpose: document.getElementById('edit-purpose').value,
+                    status: document.getElementById('edit-status').value,
+                    faultDescription: document.getElementById('edit-fault-description').value,
+                    
+                    oilFilterStock: document.getElementById('edit-oil-liters').value,
+                    oilFilterPN: document.getElementById('edit-has-kit').checked ? 'Yes' : 'No',
+                    
+                    lastMaintenanceDate: maintJson,
+                    engineHoursAtLastMaintenance: hoursJson,
+                    
+                    contacts: getContactsFromContainer('edit'),
+                    notes: document.getElementById('edit-notes').value
+                }
+            };
+            await sendUpdate(payload);
+            closeModal('edit-modal');
+            closeModal('details-modal');
+        }
+        async function handleDelete() {
+            const id = document.getElementById('edit-id').value;
+            if (!id) {
+                showToast('שגיאה: מזהה גנרטור חסר');
+                return;
+            }
+            const confirmBtn = document.getElementById('confirm-delete-btn');
+            confirmBtn.onclick = async () => {
+                closeModal('confirm-delete-modal');
+                console.log('Sending logical delete (update status) for ID:', id);
+                await sendUpdate({ 
+                    action: 'update', 
+                    id: id, 
+                    data: { status: 'deleted' } 
+                });
+                closeModal('edit-modal');
+            };
+            document.getElementById('confirm-delete-modal').classList.add('active');
+        }
+        function openDetailsModal(id) {
+            const gen = generators.find(g => g._row == id);
+            if (!gen) return;
+            const title = document.getElementById('details-title');
+            const content = document.getElementById('details-content');
+            const editBtn = document.getElementById('details-edit-btn');
+            title.textContent = ""; // Remove title as requested
+            editBtn.onclick = (e) => {
+                e.stopPropagation();
+                closeModal('details-modal');
+                openEditModal(id);
+            };
+            const days = calculateDaysToMaintenance(gen);
+            
+            let maintenanceClass = 'text-slate-600 bg-slate-50';
+            let maintenanceText = '';
+            
+            if (gen.purpose === 'גיבוי') {
+                maintenanceText = '--גיבוי--';
+            } else if (gen.purpose === 'סבב') {
+                maintenanceText = '--סבב--';
+            } else {
+                if (days !== null && days <= 0) {
+                    maintenanceClass = 'text-red-600 bg-red-50';
+                    maintenanceText = 'בפיגור של ' + Math.abs(days) + ' ימים';
+                } else if (days !== null && days <= 14) {
+                    maintenanceClass = 'text-amber-600 bg-amber-50';
+                    maintenanceText = 'עוד ' + days + ' ימים לטיפול';
+                } else {
+                    maintenanceText = 'עוד ' + (days || 0) + ' ימים לטיפול';
+                }
+            }
+            const hasKit = gen.oilFilterPN === 'Yes' || gen.oilFilterPN === 'יש' || gen.oilFilterPN === true || gen.oilFilterPN === 'true';
+            const oilLiters = gen.oilFilterStock || '-';
+
+            content.innerHTML = `
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div class="space-y-2">
+                        <div class="p-3 rounded-xl border bg-slate-50">
+                            <h3 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">מידע כללי</h3>
+                            <div class="space-y-1">
+                                <div class="flex justify-between"><span class="text-slate-500">מיקום:</span> <span class="font-bold">${gen.location}</span></div>
+                                <div class="flex justify-between"><span class="text-slate-500">הספק:</span> <span class="font-medium">${gen.power || '-'}</span></div>
+                                <div class="flex justify-between"><span class="text-slate-500">מק"ט יצרן:</span> <span class="font-medium">${gen.manufacturerPartNumber || '-'}</span></div>
+                                <div class="flex justify-between"><span class="text-slate-500">חברה מתחזקת:</span> <span class="font-medium">${gen.maintenanceCompany || '-'}</span></div>
+                                <div class="flex justify-between"><span class="text-slate-500">מס' צה"לי:</span> <span class="font-medium">${gen.idfNumber || '-'}</span></div>
+                                <div class="flex justify-between"><span class="text-slate-500">מזין את:</span> <span class="font-medium">${gen.feeds || '-'}</span></div>
+                                <div class="flex justify-between pt-1 border-t">
+                                    <span class="text-slate-500">סטטוס:</span> 
+                                    <span class="font-bold ${gen.status === 'תקול' ? 'text-red-600' : 'text-green-600'}">${gen.status}</span>
+                                </div>
+                                ${gen.status === 'תקול' && gen.faultDescription ? `
+                                <div class="p-2 bg-red-50 text-red-700 text-xs rounded border border-red-100 mt-1">
+                                    <strong>תיאור תקלה:</strong> ${gen.faultDescription}
+                                </div>` : ''}
+                                ${gen.notes && gen.notes.trim() ? `
+                                <div class="pt-1 border-t">
+                                    <span class="text-xs font-bold text-slate-400 uppercase block mb-0.5">הערות:</span>
+                                    <div class="text-sm text-slate-700 whitespace-pre-wrap">${gen.notes}</div>
+                                </div>` : ''}
+                            </div>
+                        </div>
+                        
+                        <div class="p-3 rounded-xl border bg-slate-50">
+                            <h3 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">שעות מנוע</h3>
+                            <div class="flex justify-between items-end">
+                                <div>
+                                    <div class="text-2xl font-bold">${(() => {
+                                        try {
+                                            const data = JSON.parse(gen.engineHoursAtLastMaintenance || '{}');
+                                            return data.hours || 0;
+                                        } catch(e) { return gen.engineHoursAtLastMaintenance || 0; }
+                                    })()}</div>
+                                    <div class="text-xs text-slate-400">דיווח אחרון: ${(() => {
+                                        try {
+                                            const data = JSON.parse(gen.engineHoursAtLastMaintenance || '{}');
+                                            return formatDate(data.date);
+                                        } catch(e) { return formatDate(gen.currentHoursDate); }
+                                    })()}</div>
+                                </div>
+                                <button onclick="openHoursReportModal('${gen._row}')" class="edit-only text-xs bg-white hover:bg-slate-100 px-3 py-1 rounded-lg border font-bold">דיווח שעות</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="space-y-2">
+                        <div class="p-3 rounded-xl border ${maintenanceClass}">
+                            <div class="flex justify-between items-start mb-1">
+                                <h3 class="text-xs font-bold opacity-60 uppercase tracking-wider">תחזוקה</h3>
+                                <button onclick="openMaintenanceModal('${gen._row}')" class="edit-only text-xs bg-white/50 hover:bg-white px-3 py-1 rounded-lg border font-bold">דיווח טיפול</button>
+                            </div>
+                            <div class="text-xl font-bold mb-0.5">
+                                ${maintenanceText}
+                            </div>
+                            <div class="text-sm opacity-80">טיפול אחרון: ${(() => {
+                                try {
+                                    const data = JSON.parse(gen.lastMaintenanceDate || '{}');
+                                    return formatDate(data.date);
+                                } catch(e) { return formatDate(gen.lastMaintenanceDate); }
+                            })()}</div>
+                            <div class="text-sm opacity-80">שעות מנוע בטיפול: ${(() => {
+                                try {
+                                    const data = JSON.parse(gen.lastMaintenanceDate || '{}');
+                                    return data.hours || 0;
+                                } catch(e) { return gen.engineHoursAtLastMaintenance || 0; }
+                            })()}</div>
+                            
+                            <div class="mt-2 pt-2 border-t border-black/10 space-y-1">
+                                <div class="flex items-center justify-between">
+                                    <span class="text-sm font-medium opacity-70">קיט חלפים במלאי:</span>
+                                    <span class="font-bold ${hasKit ? 'text-emerald-700' : 'text-red-700'}">
+                                        ${hasKit ? 'יש' : 'אין'}
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                <div class="p-3 rounded-xl border bg-slate-50 mt-4">
+                    <h3 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">אנשי קשר</h3>
+                    <div class="space-y-2">
+                        ${(() => {
+                            let contacts = [];
+                            try { 
+                                contacts = JSON.parse(gen.contacts || '[]'); 
+                                if (!Array.isArray(contacts)) contacts = [];
+                            } catch(e) {
+                                if (gen.contacts && gen.contacts.trim()) {
+                                    contacts = [{ name: gen.contacts, phone: '', role: 'מידע ישן' }];
+                                }
+                            }
+                            if (contacts.length === 0) return '<div class="text-sm text-slate-400 italic">אין אנשי קשר רשומים</div>';
+                            return contacts.map(c => `
+                                <div class="flex items-center justify-between p-2 bg-white rounded border text-sm">
+                                    <div>
+                                        <span class="font-bold">${c.name}</span>
+                                        ${c.role ? `<span class="text-slate-500 text-xs"> (${c.role})</span>` : ''}
+                                        <div class="text-slate-600">${c.phone || ''}</div>
+                                    </div>
+                                    <div class="flex gap-1">
+                                        ${c.phone ? `
+                                            <a href="tel:${c.phone}" class="p-1.5 bg-slate-100 rounded-full hover:bg-slate-200" title="התקשר">
+                                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+                                            </a>
+                                            <a href="${getWhatsAppLink(c.phone)}" target="_blank" class="p-1.5 bg-green-100 text-green-600 rounded-full hover:bg-green-200" title="WhatsApp">
+                                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" viewBox="0 0 16 16"><path d="M13.601 2.326A7.854 7.854 0 0 0 7.994 0C3.627 0 .068 3.558.064 7.926c0 1.399.366 2.76 1.061 3.972L0 16l4.14-1.086c1.158.633 2.451.963 3.761.971h.004c4.366 0 7.925-3.559 7.929-7.929 0-2.117-.823-4.107-2.322-5.607zm-5.607 12.756h-.003c-1.185-.001-2.347-.319-3.361-.919l-.24-.142-2.498.656.668-2.438-.156-.248a6.57 6.57 0 0 1-1.006-3.504c.003-3.623 2.956-6.576 6.581-6.576 1.757 0 3.408.684 4.65 1.926a6.547 6.547 0 0 1 1.922 4.653c-.003 3.623-2.956 6.577-6.58 6.577zm3.557-4.873c-.195-.097-1.155-.57-1.334-.635-.179-.066-.31-.097-.44.097-.13.195-.503.635-.617.765-.114.13-.228.146-.423.049-.195-.097-.824-.304-1.57-.97-.58-.517-.972-1.155-1.086-1.35-.114-.195-.012-.301.085-.398.088-.087.195-.228.293-.34.098-.113.13-.195.195-.325.066-.13.033-.244-.017-.341-.05-.097-.44-1.06-.603-1.456-.158-.384-.317-.332-.44-.338-.114-.005-.245-.006-.375-.006-.13 0-.341.049-.52.244-.179.195-.684.668-.684 1.63 0 .963.7 1.894.797 2.025.098.13 1.377 2.102 3.335 2.947.466.201.829.321 1.112.411.468.148.894.127 1.231.077.376-.056 1.155-.472 1.317-.928.162-.456.162-.846.114-.928-.048-.082-.179-.13-.375-.227z"/></svg>
+                                            </a>
+                                        ` : ''}
+                                    </div>
+                                </div>
+                            `).join('');
+                        })()}
+                    </div>
+                </div>
+            `;
+            document.getElementById('details-modal').classList.add('active');
+        }
+
+        async function openImagesModal(id) {
+            currentGeneratorId = id;
+            const gen = generators.find(g => g.id == id);
+            document.getElementById('images-modal-title').textContent = `תמונות - ${gen.location}`;
+            document.getElementById('images-modal').classList.add('active');
+            loadImages(id);
+        }
+
+        async function loadImages(id) {
+            const container = document.getElementById('images-grid');
+            container.innerHTML = '<div class="col-span-full text-center py-8">טוען תמונות...</div>';
+            
+            try {
+                const { data, error } = await supabaseClient
+                    .from('generator_images')
+                    .select('*')
+                    .eq('generator_id', id);
+
+                if (error) throw error;
+
+                if (data.length === 0) {
+                    container.innerHTML = '<div class="col-span-full text-center py-8 text-slate-400">אין תמונות לגנרטור זה</div>';
+                    return;
+                }
+
+                container.innerHTML = '';
+                data.forEach(img => {
+                    const { data: { publicUrl } } = supabaseClient
+                        .storage
+                        .from('generator-images')
+                        .getPublicUrl(img.storage_path);
+
+                    const card = document.createElement('div');
+                    card.className = 'image-card group';
+                    card.innerHTML = `
+                        <img src="${publicUrl}" alt="Generator image" class="w-full h-full object-cover">
+                        <button onclick="deleteImage('${img.id}', '${img.storage_path}')" class="delete-image-btn edit-only">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18m-2 0v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6m3 0V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+                        </button>
+                    `;
+                    container.appendChild(card);
+                });
+            } catch (error) {
+                console.error('Error loading images:', error);
+                container.innerHTML = `<div class="col-span-full text-center py-8 text-red-500">שגיאה בטעינת תמונות: ${error.message}</div>`;
+            }
+        }
+
+        async function handleImageUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const uploadBtn = document.querySelector('label[for="image-upload-input"]');
+            const originalContent = uploadBtn.innerHTML;
+            uploadBtn.style.pointerEvents = 'none';
+            uploadBtn.innerHTML = 'מעלה...';
+
+            try {
+                // Compress image to ~200KB
+                const compressedFile = await compressImage(file, 200 * 1024);
+                
+                const fileName = `${currentGeneratorId}/${Date.now()}_${file.name}`;
+                const { data, error } = await supabaseClient
+                    .storage
+                    .from('generator-images')
+                    .upload(fileName, compressedFile);
+
+                if (error) throw error;
+
+                // Save to database
+                const { error: dbError } = await supabaseClient
+                    .from('generator_images')
+                    .insert([{
+                        generator_id: currentGeneratorId,
+                        storage_path: fileName
+                    }]);
+
+                if (dbError) throw dbError;
+
+                showToast('התמונה הועלתה בהצלחה');
+                loadImages(currentGeneratorId);
+            } catch (error) {
+                console.error('Error uploading image:', error);
+                showToast(`שגיאה בהעלאת תמונה: ${error.message}`);
+            } finally {
+                uploadBtn.style.pointerEvents = 'auto';
+                uploadBtn.innerHTML = originalContent;
+                event.target.value = '';
+            }
+        }
+
+        async function deleteImage(imageId, storagePath) {
+            if (!confirm('האם אתה בטוח שברצונך למחוק תמונה זו?')) return;
+
+            try {
+                // Delete from storage
+                const { error: storageError } = await supabaseClient
+                    .storage
+                    .from('generator-images')
+                    .remove([storagePath]);
+
+                if (storageError) throw storageError;
+
+                // Delete from database
+                const { error: dbError } = await supabaseClient
+                    .from('generator_images')
+                    .delete()
+                    .eq('id', imageId);
+
+                if (dbError) throw dbError;
+
+                showToast('התמונה נמחקה בהצלחה');
+                loadImages(currentGeneratorId);
+            } catch (error) {
+                console.error('Error deleting image:', error);
+                showToast(`שגיאה במחיקת תמונה: ${error.message}`);
+            }
+        }
+
+        async function compressImage(file, maxSize) {
+            return new Promise((resolve) => {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const img = new Image();
+                    img.onload = () => {
+                        const canvas = document.createElement('canvas');
+                        let width = img.width;
+                        let height = img.height;
+                        
+                        // Max dimension 1200px
+                        const maxDim = 1200;
+                        if (width > height) {
+                            if (width > maxDim) {
+                                height *= maxDim / width;
+                                width = maxDim;
+                            }
+                        } else {
+                            if (height > maxDim) {
+                                width *= maxDim / height;
+                                height = maxDim;
+                            }
+                        }
+                        
+                        canvas.width = width;
+                        canvas.height = height;
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(img, 0, 0, width, height);
+                        
+                        let quality = 0.8;
+                        const step = 0.1;
+                        
+                        const attemptCompression = () => {
+                            canvas.toBlob((blob) => {
+                                if (blob.size <= maxSize || quality <= 0.1) {
+                                    resolve(new File([blob], file.name, { type: 'image/jpeg' }));
+                                } else {
+                                    quality -= step;
+                                    attemptCompression();
+                                }
+                            }, 'image/jpeg', quality);
+                        };
+                        
+                        attemptCompression();
+                    };
+                    img.src = e.target.result;
+                };
+                reader.readAsDataURL(file);
+            });
+        }
+
+        async function sendUpdate(payload) {
+            const submitBtns = document.querySelectorAll('button[type="submit"]');
+            submitBtns.forEach(btn => {
+                btn.disabled = true;
+                btn.innerHTML = `<svg class="animate-spin h-5 w-5 text-white inline mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> שומר...`;
+            });
+
+            try {
+                let result;
+                const { action, ...payloadData } = payload;
+
+                if (action === 'add') {
+                    const data = payloadData.data;
+                    const dbData = {
+                        location: data.location,
+                        power: data.power,
+                        manufacturer_part_number: data.manufacturerPartNumber,
+                        maintenance_company: data.maintenanceCompany,
+                        idf_number: data.idfNumber,
+                        feeds: data.feeds,
+                        purpose: data.purpose,
+                        status: data.status,
+                        fault_description: data.faultDescription,
+                        oil_filter_stock: data.oilFilterStock,
+                        oil_filter_pn: data.oilFilterPN,
+                        last_maintenance_date: data.lastMaintenanceDate,
+                        engine_hours_at_last_maintenance: data.engineHoursAtLastMaintenance,
+                        contacts: data.contacts,
+                        notes: data.notes
+                    };
+                    result = await supabaseClient.from('generators').insert([dbData]);
+                } else if (action === 'update') {
+                    const { id, data } = payloadData;
+                    const dbData = {
+                        location: data.location,
+                        power: data.power,
+                        manufacturer_part_number: data.manufacturerPartNumber,
+                        maintenance_company: data.maintenanceCompany,
+                        idf_number: data.idfNumber,
+                        feeds: data.feeds,
+                        purpose: data.purpose,
+                        status: data.status,
+                        fault_description: data.faultDescription,
+                        oil_filter_stock: data.oilFilterStock,
+                        oil_filter_pn: data.oilFilterPN,
+                        last_maintenance_date: data.lastMaintenanceDate,
+                        engine_hours_at_last_maintenance: data.engineHoursAtLastMaintenance,
+                        contacts: data.contacts,
+                        notes: data.notes
+                    };
+                    result = await supabaseClient.from('generators').update(dbData).eq('id', id);
+                } else if (action === 'maintenance') {
+                    const { id, engineHours, date, performer } = payloadData;
+                    const maintJson = JSON.stringify({
+                        date: date,
+                        hours: engineHours,
+                        parts: ''
+                    });
+                    const hoursJson = JSON.stringify({
+                        date: date,
+                        hours: engineHours
+                    });
+                    result = await supabaseClient.from('generators').update({
+                        last_maintenance_date: maintJson,
+                        engine_hours_at_last_maintenance: hoursJson,
+                        status: 'תקין'
+                    }).eq('id', id);
+                } else if (action === 'report_hours') {
+                    const { id, engineHours, date } = payloadData;
+                    const hoursJson = JSON.stringify({
+                        date: date,
+                        hours: engineHours
+                    });
+                    result = await supabaseClient.from('generators').update({
+                        engine_hours_at_last_maintenance: hoursJson
+                    }).eq('id', id);
+                } else if (action === 'delete') {
+                    result = await supabaseClient.from('generators').update({ status: 'deleted' }).eq('id', payloadData.id);
+                }
+
+                if (result.error) throw result.error;
+
+                showToast('הנתונים נשמרו בהצלחה');
+                fetchData();
+            } catch (error) {
+                console.error('Error sending update:', error);
+                showToast(`שגיאה בשמירת הנתונים: ${error.message}`);
+            } finally {
+                submitBtns.forEach(btn => {
+                    btn.disabled = false;
+                    if (btn.closest('#add-modal')) btn.textContent = 'הוסף';
+                    else if (btn.closest('#edit-modal')) btn.textContent = 'שמור שינויים';
+                    else if (btn.closest('#maintenance-modal')) btn.textContent = 'שמור טיפול';
+                    else if (btn.closest('#hours-report-modal')) btn.textContent = 'שמור דיווח';
+                });
+            }
+        }
+        function showToast(message) {
+            const toast = document.getElementById('toast');
+            const msgSpan = document.getElementById('toast-message');
+            msgSpan.textContent = message;
+            toast.classList.add('active');
+            setTimeout(() => {
+                toast.classList.remove('active');
+            }, 5000);
+        }
+        function openContacts(id) {
+            const gen = generators.find(g => g._row == id);
+            document.getElementById('contacts-title').textContent = `אנשי קשר - ${gen.location}`;
+            const list = document.getElementById('contacts-list');
+            
+            let contacts = [];
+            try {
+                contacts = JSON.parse(gen.contacts || '[]');
+                if (!Array.isArray(contacts)) contacts = [];
+            } catch (e) {
+                if (gen.contacts && gen.contacts.trim()) {
+                    contacts = [{ name: gen.contacts, phone: '', role: 'מידע ישן' }];
+                }
+            }
+            if (contacts.length === 0) {
+                list.innerHTML = '<p class="text-slate-500 text-center py-4">אין אנשי קשר רשומים</p>';
+            } else {
+                list.innerHTML = contacts.map(c => `
+                    <div class="flex items-center justify-between p-3 bg-slate-50 rounded-lg border">
+                        <div>
+                            <div class="font-bold">${c.name}</div>
+                            <div class="text-sm text-slate-500">${c.role || ''}</div>
+                            <div class="text-xs text-slate-400">${c.phone || ''}</div>
+                        </div>
+                        <div class="flex gap-2">
+                            ${c.phone ? `
+                                <a href="tel:${c.phone}" class="p-2 bg-white rounded-full border hover:bg-slate-100" title="התקשר">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+                                </a>
+                                <a href="${getWhatsAppLink(c.phone)}" target="_blank" class="p-2 bg-green-500 text-white rounded-full hover:bg-green-600" title="WhatsApp">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M13.601 2.326A7.854 7.854 0 0 0 7.994 0C3.627 0 .068 3.558.064 7.926c0 1.399.366 2.76 1.061 3.972L0 16l4.14-1.086c1.158.633 2.451.963 3.761.971h.004c4.366 0 7.925-3.559 7.929-7.929 0-2.117-.823-4.107-2.322-5.607zm-5.607 12.756h-.003c-1.185-.001-2.347-.319-3.361-.919l-.24-.142-2.498.656.668-2.438-.156-.248a6.57 6.57 0 0 1-1.006-3.504c.003-3.623 2.956-6.576 6.581-6.576 1.757 0 3.408.684 4.65 1.926a6.547 6.547 0 0 1 1.922 4.653c-.003 3.623-2.956 6.577-6.58 6.577zm3.557-4.873c-.195-.097-1.155-.57-1.334-.635-.179-.066-.31-.097-.44.097-.13.195-.503.635-.617.765-.114.13-.228.146-.423.049-.195-.097-.824-.304-1.57-.97-.58-.517-.972-1.155-1.086-1.35-.114-.195-.012-.301.085-.398.088-.087.195-.228.293-.34.098-.113.13-.195.195-.325.066-.13.033-.244-.017-.341-.05-.097-.44-1.06-.603-1.456-.158-.384-.317-.332-.44-.338-.114-.005-.245-.006-.375-.006-.13 0-.341.049-.52.244-.179.195-.684.668-.684 1.63 0 .963.7 1.894.797 2.025.098.13 1.377 2.102 3.335 2.947.466.201.829.321 1.112.411.468.148.894.127 1.231.077.376-.056 1.155-.472 1.317-.928.162-.456.162-.846.114-.928-.048-.082-.179-.13-.375-.227z"/></svg>
+                                </a>
+                            ` : ''}
+                        </div>
+                    </div>
+                `).join('');
+            }
+            
+            document.getElementById('contacts-modal').classList.add('active');
+        }
+    </script>
+</body>
+</html>
